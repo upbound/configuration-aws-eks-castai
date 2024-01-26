@@ -1,0 +1,47 @@
+apiVersion: meta.pkg.crossplane.io/v1alpha1
+kind: Configuration
+metadata:
+  name: configuration-aws-eks-castai
+  annotations:
+    meta.crossplane.io/maintainer: Upbound <support@upbound.io>
+    meta.crossplane.io/source: github.com/upbound/configuration-aws-eks-castai
+    meta.crossplane.io/license: Apache-2.0
+    meta.crossplane.io/description: |
+      This reference platform Configuration for CAST AI
+      CAST AI is the leading all-in-one platform for Kubernetes 
+      automation, optimization, security, and cost management.
+
+    meta.crossplane.io/readme: |
+      This reference platform Configuration for CAST AI
+      CAST AI is the leading all-in-one platform for Kubernetes 
+      automation, optimization, security, and cost management.
+      
+      The overall Composition supports the use case of onboarding to CAST AI platform.
+      This reference platform includes an ReadOnly Composition for creating Cluster in ReadOnly mode, 
+      and FullAccess to promote Cluster in FullAccess Mode.
+      This Configuration uses AWS IAM service primitives from the [Upbound Official AWS
+      Provider](https://marketplace.upbound.io/providers/upbound/provider-family-aws/) and CAST AI 
+      service promitived from the [CAST AI Provider](https://marketplace.upbound.io/providers/crossplane-contrib/crossplane-provider-castai/).
+
+      To learn more checkout the [GitHub repo](https://github.com/upbound/configuration-aws-eks-castai/) that you can copy and
+      customize to meet the exact needs of your organization!
+
+spec:
+  crossplane:
+    version: ">=v1.14.1-0"
+  dependsOn:
+    - configuration: xpkg.upbound.io/upbound/configuration-aws-eks
+      # renovate: datasource=github-releases depName=upbound/configuration-aws-eks
+      version: "v0.6.0"
+    - provider: xpkg.upbound.io/upbound/provider-aws-iam
+      # renovate: datasource=github-releases depName=upbound/provider-aws-iam
+      version: v0.47.1
+    - provider: xpkg.upbound.io/crossplane-contrib/provider-helm
+      # renovate: datasource=github-releases depName=crossplane-contrib/provider-helm
+      version: "v0.16.0"
+    - provider: xpkg.upbound.io/crossplane-contrib/crossplane-provider-castai
+      # renovate: datasource=github-releases depName=crossplane-contrib/crossplane-provider-castai
+      version: "v0.9.1"
+    - function: xpkg.upbound.io/upbound/function-patch-and-transform
+      # renovate: datasource=github-releases depName=upbound/function-patch-and-transform
+      version: "v0.2.1"
