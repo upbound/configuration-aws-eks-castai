@@ -2,9 +2,9 @@
 set -aeuo pipefail
 
 echo "Running setup.sh"
-echo "Waiting until configuration package is healthy/installed..."
-"${KUBECTL}" wait configuration.pkg platform-ref-gcp --for=condition=Healthy --timeout 5m
-"${KUBECTL}" wait configuration.pkg platform-ref-gcp --for=condition=Installed --timeout 5m
+echo "Waiting until all configuration packages are healthy/installed..."
+"${KUBECTL}" wait configuration.pkg --all --for=condition=Healthy --timeout 5m
+"${KUBECTL}" wait configuration.pkg --all --for=condition=Installed --timeout 5m
 "${KUBECTL}" wait configurationrevisions.pkg --all --for=condition=Healthy --timeout 5m
 
 echo "Waiting until all installed provider packages are healthy..."

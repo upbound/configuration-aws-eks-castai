@@ -1,0 +1,125 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xreadonly.castai.aws.platform.upbound.io
+  labels:
+    provider: aws
+spec:
+  writeConnectionSecretsToNamespace: upbound-system
+  compositeTypeRef:
+    apiVersion: castai.aws.platform.upbound.io/v1alpha1
+    kind: XReadOnly
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: upbound-function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        patchSets:
+          - name: common
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.providerConfigName
+                toFieldPath: spec.providerConfigRef.name
+          - name: common-helm
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.id
+                toFieldPath: spec.providerConfigRef.name
+        resources:
+          - name: ekscluster
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: EksCluster
+              spec:
+                writeConnectionSecretToRef:
+                  namespace: upbound-system
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.labels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.writeConnectionSecretToRef.name
+                transforms:
+                  - type: string
+                    string:
+                      fmt: castai-%s
+                      type: Format
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.accountId
+                toFieldPath: spec.forProvider.accountId
+                transforms:
+                  - type: string
+                    string:
+                      regexp:
+                        group: 1
+                        match: (\d+)
+                      type: Regexp
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deleteNodesOnDisconnect
+                toFieldPath: spec.forProvider.deleteNodesOnDisconnect
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.assumeRoleArn
+                toFieldPath: spec.forProvider.assumeRoleArn
+
+          - name: agent
+            base:
+              apiVersion: helm.crossplane.io/v1beta1
+              kind: Release
+              spec:
+                forProvider:
+                  chart:
+                    name: castai-agent
+                    repository: https://castai.github.io/helm-charts/
+                    version: 0.67.0
+                  namespace: castai-agent
+                  set:
+                    - name: apiKey
+                      valueFrom:
+                        secretKeyRef:
+                          key: attribute.cluster_token
+                          namespace: upbound-system
+                          optional: false
+                  values:
+                    createNamespace: false
+                    provider: eks
+                rollbackLimit: 3
+            patches:
+              - type: PatchSet
+                patchSetName: common-helm
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.set[0].valueFrom.secretKeyRef.name
+                transforms:
+                  - type: string
+                    string:
+                      fmt: castai-%s
+                      type: Format
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                transforms:
+                  - type: match
+                    match:
+                      fallbackValue: null
+                      patterns:
+                        - regexp: .*
+                          result: castai-agent
+                          type: regexp

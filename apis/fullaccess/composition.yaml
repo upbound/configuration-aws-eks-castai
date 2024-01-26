@@ -1,0 +1,831 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xfullaccess.castai.aws.platform.upbound.io
+  labels:
+    provider: aws
+spec:
+  writeConnectionSecretsToNamespace: upbound-system
+  compositeTypeRef:
+    apiVersion: castai.aws.platform.upbound.io/v1alpha1
+    kind: XFullAccess
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: upbound-function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        patchSets:
+          - name: common
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.providerConfigName
+                toFieldPath: spec.providerConfigRef.name
+          - name: common-helm
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deletionPolicy
+                toFieldPath: spec.deletionPolicy
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.id
+                toFieldPath: spec.providerConfigRef.name
+        resources:
+          - name: cluster-role
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: Role
+              metadata:
+                labels:
+                  resource: cast-ai-cluster-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.arn
+                policy:
+                  fromFieldPath: Optional
+                toFieldPath: status.onboarding.clusterRole
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: cast-eks-%s-cluster-role
+                  variables:
+                    - fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.name
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: |
+                      {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                          {
+                            "Effect": "Allow",
+                            "Principal": {
+                              "AWS": [
+                                "%s"
+                              ]
+                            },
+                            "Action": "sts:AssumeRole"
+                          }
+                        ]
+                      }
+                  variables:
+                    - fromFieldPath: status.onboarding.eksUserArn
+                policy:
+                  fromFieldPath: Required
+                toFieldPath: spec.forProvider.assumeRolePolicy
+
+          - name: eks-user-arn
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: EksUserArn
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.onboarding.clusterId
+                toFieldPath: spec.forProvider.clusterId
+                policy:
+                  fromFieldPath: Required
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.arn
+                toFieldPath: status.onboarding.eksUserArn
+                policy:
+                  fromFieldPath: Optional
+
+          - name: cluster-role-ec2-read-only
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArn: arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-cluster-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: cluster-role-iam-read-only
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArn: arn:aws:iam::aws:policy/IAMReadOnlyAccess
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-cluster-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: cluster-role-policy
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: Policy
+              metadata:
+                labels:
+                  resource: cast-ai-cluster-role-policy
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: cast-eks-%s-cluster-policy
+                  variables:
+                    - fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.name
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: |
+                      {
+                        "Version":"2012-10-17",
+                        "Statement":[
+                            {
+                              "Sid":"PassRoleEC2",
+                              "Action":"iam:PassRole",
+                              "Effect":"Allow",
+                              "Resource":"arn:aws:iam::*:role/*",
+                              "Condition":{
+                                  "StringEquals":{
+                                    "iam:PassedToService":"ec2.amazonaws.com"
+                                  }
+                              }
+                            },
+                            {
+                              "Sid":"NonResourcePermissions",
+                              "Effect":"Allow",
+                              "Action":[
+                                  "iam:DeleteInstanceProfile",
+                                  "iam:RemoveRoleFromInstanceProfile",
+                                  "iam:DeleteRole",
+                                  "iam:DetachRolePolicy",
+                                  "iam:CreateServiceLinkedRole",
+                                  "iam:DeleteServiceLinkedRole",
+                                  "ec2:CreateKeyPair",
+                                  "ec2:DeleteKeyPair",
+                                  "ec2:CreateTags",
+                                  "ec2:ImportKeyPair"
+                              ],
+                              "Resource":"*"
+                            },
+                            {
+                              "Sid":"RunInstancesPermissions",
+                              "Effect":"Allow",
+                              "Action":"ec2:RunInstances",
+                              "Resource":[
+                                  "arn:aws:ec2:*:%[1]s:network-interface/*",
+                                  "arn:aws:ec2:*:%[1]s:security-group/*",
+                                  "arn:aws:ec2:*:%[1]s:volume/*",
+                                  "arn:aws:ec2:*:%[1]s:key-pair/*",
+                                  "arn:aws:ec2:*::image/*"
+                              ]
+                            }
+                        ]
+                      }
+                  variables:
+                    - fromFieldPath: status.onboarding.accountId
+                policy:
+                  fromFieldPath: Required
+                toFieldPath: spec.forProvider.policy
+
+          - name: cluster-rpa-policy
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArnSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-cluster-role-policy
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-cluster-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: cluster-role-policy-restricted
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: Policy
+              metadata:
+                labels:
+                  resource: cast-ai-cluster-role-policy-restricted
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: cast-eks-%s-cluster-policy-restricted
+                  variables:
+                    - fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.name
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: |
+                      {
+                        "Version":"2012-10-17",
+                        "Statement":[
+                            {
+                              "Sid":"RunInstancesTagRestriction",
+                              "Effect":"Allow",
+                              "Action":"ec2:RunInstances",
+                              "Resource":"arn:aws:ec2:%[2]s:%[1]s:instance/*",
+                              "Condition":{
+                                  "StringEquals":{
+                                    "aws:RequestTag/kubernetes.io/cluster/%[3]s":"owned"
+                                  }
+                              }
+                            },
+                            {
+                              "Sid":"RunInstancesVpcRestriction",
+                              "Effect":"Allow",
+                              "Action":"ec2:RunInstances",
+                              "Resource":"arn:aws:ec2:%[2]s:%[1]s:subnet/*",
+                              "Condition":{
+                                  "StringEquals":{
+                                    "ec2:Vpc":"arn:aws:ec2:%[2]s:%[1]s:vpc/%[4]s"
+                                  }
+                              }
+                            },
+                            {
+                              "Sid":"InstanceActionsTagRestriction",
+                              "Effect":"Allow",
+                              "Action":[
+                                  "ec2:TerminateInstances",
+                                  "ec2:StartInstances",
+                                  "ec2:StopInstances",
+                                  "ec2:CreateTags"
+                              ],
+                              "Resource":"arn:aws:ec2:%[2]s:%[1]s:instance/*",
+                              "Condition":{
+                                  "StringEquals":{
+                                    "ec2:ResourceTag/kubernetes.io/cluster/%[3]s":[
+                                        "owned",
+                                        "shared"
+                                    ]
+                                  }
+                              }
+                            },
+                            {
+                              "Sid":"VpcRestrictedActions",
+                              "Effect":"Allow",
+                              "Action":[
+                                  "ec2:DeleteSecurityGroup",
+                                  "ec2:DeleteNetworkInterface"
+                              ],
+                              "Resource":"*",
+                              "Condition":{
+                                  "StringEquals":{
+                                    "ec2:Vpc":"arn:aws:ec2:%[2]s:%[1]s:vpc/%[4]s"
+                                  }
+                              }
+                            },
+                            {
+                              "Sid":"AutoscalingActionsTagRestriction",
+                              "Effect":"Allow",
+                              "Action":[
+                                  "autoscaling:UpdateAutoScalingGroup",
+                                  "autoscaling:SuspendProcesses",
+                                  "autoscaling:ResumeProcesses",
+                                  "autoscaling:TerminateInstanceInAutoScalingGroup"
+                              ],
+                              "Resource":"arn:aws:autoscaling:%[2]s:%[1]s:autoScalingGroup:*:autoScalingGroupName/*",
+                              "Condition":{
+                                  "StringEquals":{
+                                    "autoscaling:ResourceTag/kubernetes.io/cluster/%[3]s":[
+                                        "owned",
+                                        "shared"
+                                    ]
+                                  }
+                              }
+                            },
+                            {
+                              "Sid":"EKS",
+                              "Effect":"Allow",
+                              "Action":[
+                                  "eks:Describe*",
+                                  "eks:List*"
+                              ],
+                              "Resource":[
+                                  "arn:aws:eks:%[2]s:%[1]s:cluster/%[3]s",
+                                  "arn:aws:eks:%[2]s:%[1]s:nodegroup/%[3]s/*/*"
+                              ]
+                            }
+                        ]
+                      }
+                  variables:
+                    - fromFieldPath: status.onboarding.accountId
+                    - fromFieldPath: spec.parameters.region
+                    - fromFieldPath: spec.parameters.clusterName
+                    - fromFieldPath: spec.parameters.vpc
+                policy:
+                  fromFieldPath: Required
+                toFieldPath: spec.forProvider.policy
+
+          - name: cluster-rpa-policy-restricted
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArnSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-cluster-role-policy-restricted
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-cluster-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: instance-role
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: Role
+              metadata:
+                labels:
+                  resource: cast-ai-instance-role
+              spec:
+                forProvider:
+                  assumeRolePolicy: |
+                    {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                        {
+                          "Effect": "Allow",
+                          "Principal": {
+                            "Service": [
+                              "ec2.amazonaws.com"
+                            ]
+                          },
+                          "Action": "sts:AssumeRole"
+                        }
+                      ]
+                    }
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.arn
+                policy:
+                  fromFieldPath: Optional
+                toFieldPath: status.onboarding.instanceProfileRole
+
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: cast-eks-%s-instance-profile
+                  variables:
+                    - fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.name
+
+          - name: instance-role-eks-worker-node-policy
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArn: arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-instance-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: instance-role-ecr-read-only
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArn: arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-instance-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: instance-role-cni
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: RolePolicyAttachment
+              spec:
+                forProvider:
+                  policyArn: arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-instance-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+
+          - name: cluster-instanceProfile
+            base:
+              apiVersion: iam.aws.upbound.io/v1beta1
+              kind: InstanceProfile
+              spec:
+                forProvider:
+                  roleSelector:
+                    matchControllerRef: true
+                    matchLabels:
+                      resource: cast-ai-instance-role
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: CombineFromComposite
+                combine:
+                  strategy: string
+                  string:
+                    fmt: cast-eks-%s-instance-profile
+                  variables:
+                    - fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.name
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.arn
+                toFieldPath: status.onboarding.instanceProfileArn
+                policy:
+                  fromFieldPath: Optional
+
+          - name: cluster-readonly-to-fullaccess
+            base:
+              apiVersion: castai.aws.platform.upbound.io/v1alpha1
+              kind: XReadOnly
+              spec:
+                parameters:
+                  deleteNodesOnDisconnect: false
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.id
+                toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.parameters.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.accountId
+                toFieldPath: spec.parameters.accountId
+                transforms:
+                  - string:
+                      regexp:
+                        group: 1
+                        match: (\d+)
+                      type: Regexp
+                    type: string
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.parameters.clusterName
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.id
+                toFieldPath: spec.parameters.id
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.onboarding.clusterRole
+                toFieldPath: spec.parameters.assumeRoleArn
+                policy:
+                  fromFieldPath: Required
+
+          - name: cluster-eksClusterId
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: EksClusterId
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.labels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.region
+                toFieldPath: spec.forProvider.region
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.accountId
+                toFieldPath: spec.forProvider.accountId
+                transforms:
+                  - string:
+                      regexp:
+                        group: 1
+                        match: (\d+)
+                      type: Regexp
+                    type: string
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.clusterName
+              - type: ToCompositeFieldPath
+                fromFieldPath: status.atProvider.id
+                toFieldPath: status.onboarding.clusterId
+                policy:
+                  fromFieldPath: Optional
+              - type: ToCompositeFieldPath
+                fromFieldPath: spec.forProvider.accountId
+                toFieldPath: status.onboarding.accountId
+                policy:
+                  fromFieldPath: Optional
+
+          - name: cluster-node-configuration
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: NodeConfiguration
+              spec:
+                forProvider:
+                  clusterIdSelector:
+                    matchControllerRef: true
+                  diskCpuRatio: 0
+                  minDiskSize: 100
+            patches:
+              - type: PatchSet
+                patchSetName: common
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.labels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.clusterIdSelector.matchLabels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.subnets
+                toFieldPath: spec.forProvider.subnets
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.image
+                toFieldPath: spec.forProvider.image
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.securityGroups
+                toFieldPath: spec.forProvider.eks[0].securityGroups
+              - type: FromCompositeFieldPath
+                fromFieldPath: status.onboarding.instanceProfileArn
+                toFieldPath: spec.forProvider.eks[0].instanceProfileArn
+                policy:
+                  fromFieldPath: Required
+
+          - name: cluster-node-configuration-default
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: NodeConfigurationDefault
+              spec:
+                forProvider:
+                  clusterIdSelector:
+                    matchControllerRef: true
+                  configurationIdSelector:
+                    matchControllerRef: true
+            patches:
+              - patchSetName: common
+                type: PatchSet
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.labels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.clusterIdSelector.matchLabels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.configurationIdSelector.matchLabels[cast-ai-cluster]
+
+          - name: cluster-autoscaler
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: AutoScaler
+              spec:
+                forProvider:
+                  autoscalerPoliciesJson: |
+                    {
+                      "enabled":true,
+                      "unschedulablePods":{
+                          "enabled":true
+                      },
+                      "nodeDownscaler":{
+                          "enabled":true,
+                          "emptyNodes":{
+                            "enabled":true
+                          },
+                          "evictor":{
+                            "aggressiveMode":false,
+                            "cycleInterval":"1m",
+                            "dryRun":false,
+                            "enabled":true,
+                            "nodeGracePeriodMinutes":10,
+                            "scopedMode":false
+                          }
+                      }
+                    }
+                  clusterIdSelector:
+                    matchControllerRef: true
+            patches:
+              - patchSetName: common
+                type: PatchSet
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.labels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.clusterIdSelector.matchLabels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.autoscalerPolicies
+                toFieldPath: spec.forProvider.autoscalerPoliciesJson
+
+          - name: cluster-default-node-template
+            base:
+              apiVersion: castai.upbound.io/v1alpha1
+              kind: NodeTemplate
+              spec:
+                forProvider:
+                  name: default-by-castai
+                  isEnabled: true
+                  isDefault: true
+                  clusterIdSelector:
+                    matchControllerRef: true
+                  configurationIdSelector:
+                    matchControllerRef: true
+                  constraints:
+                    - architectures:
+                        - amd64
+                      maxCpu: 64
+                      minCpu: 2
+                      minMemory: 4096
+                      maxMemory: 225280
+                      onDemand: true
+                      spot: true
+                      spotDiversityPriceIncreaseLimitPercent: 20
+                      enableSpotDiversity: false
+                      spotInterruptionPredictionsEnabled: true
+                      spotInterruptionPredictionsType: "aws-rebalance-recommendations"
+                      useSpotFallbacks: true
+            patches:
+              - patchSetName: common
+                type: PatchSet
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.labels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.clusterIdSelector.matchLabels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.configurationIdSelector.matchLabels[cast-ai-cluster]
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                transforms:
+                  - type: match
+                    match:
+                      patterns:
+                        - type: regexp
+                          regexp: .*
+                          result: default-by-castai
+
+          - name: cluster-helm-chart-controller
+            base:
+              apiVersion: helm.crossplane.io/v1beta1
+              kind: Release
+              spec:
+                forProvider:
+                  chart:
+                    name: castai-cluster-controller
+                    repository: https://castai.github.io/helm-charts/
+                    version: 0.55.4
+                  namespace: castai-agent
+                  set:
+                    - name: castai.apiKey
+                      valueFrom:
+                        secretKeyRef:
+                          key: attribute.cluster_token
+                          namespace: upbound-system
+                          optional: false
+                    - name: castai.clusterID
+                      valueFrom:
+                        secretKeyRef:
+                          key: attribute.cluster_id
+                          namespace: upbound-system
+                          optional: false
+                rollbackLimit: 3
+            patches:
+              - type: PatchSet
+                patchSetName: common-helm
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.set[0].valueFrom.secretKeyRef.name
+                transforms:
+                  - string:
+                      fmt: castai-%s
+                      type: Format
+                    type: string
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.set[1].valueFrom.secretKeyRef.name
+                transforms:
+                  - string:
+                      fmt: castai-%s
+                      type: Format
+                    type: string
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                transforms:
+                  - match:
+                      fallbackValue: null
+                      patterns:
+                        - regexp: .*
+                          result: castai-cluster-controller
+                          type: regexp
+                    type: match
+
+          - name: cluster-helm-chart-evictor
+            base:
+              apiVersion: helm.crossplane.io/v1beta1
+              kind: Release
+              spec:
+                forProvider:
+                  chart:
+                    name: castai-evictor
+                    repository: https://castai.github.io/helm-charts/
+                    version: 0.24.11
+                  namespace: castai-agent
+                rollbackLimit: 3
+            patches:
+              - type: PatchSet
+                patchSetName: common-helm
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                transforms:
+                  - type: match
+                    match:
+                      fallbackValue: null
+                      patterns:
+                        - type: regexp
+                          regexp: .*
+                          result: castai-evictor
+
+          - name: cast-ai-cluster-helm-chart-spot
+            base:
+              apiVersion: helm.crossplane.io/v1beta1
+              kind: Release
+              spec:
+                forProvider:
+                  chart:
+                    name: castai-spot-handler
+                    repository: https://castai.github.io/helm-charts/
+                    version: 0.19.4
+                  namespace: castai-agent
+                  set:
+                    - name: castai.clusterID
+                      valueFrom:
+                        secretKeyRef:
+                          key: attribute.cluster_id
+                          namespace: upbound-system
+                          optional: false
+                  values:
+                    castai:
+                      provider: aws
+                rollbackLimit: 3
+            patches:
+              - type: PatchSet
+                patchSetName: common-helm
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: spec.forProvider.set[0].valueFrom.secretKeyRef.name
+                transforms:
+                  - type: string
+                    string:
+                      fmt: castai-%s
+                      type: Format
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.clusterName
+                toFieldPath: metadata.annotations[crossplane.io/external-name]
+                transforms:
+                  - type: match
+                    match:
+                      patterns:
+                        - type: regexp
+                          regexp: .*
+                          result: castai-spot-handler
