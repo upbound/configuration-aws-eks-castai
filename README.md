@@ -43,7 +43,7 @@ stringData:
     }
 EOF
 
-# Configure the AWS Provider to use the secret:
+# Configure the CAST AI Provider to use the secret:
 kubectl apply -f examples/castai-default-provider.yaml
 ```
 
