@@ -1,0 +1,12 @@
+apiVersion: castai.aws.platform.upbound.io/v1alpha1
+kind: XReadOnly
+metadata:
+  name: configuration-aws-eks-castai
+  annotations:
+    crossplane.io/composition-resource-name: cluster-readonly-to-fullaccess
+spec:
+  parameters:
+    id: configuration-aws-eks-castai
+    clusterName: # set-me
+    region: us-west-2
+    accountId: "12345678910"

@@ -1,0 +1,85 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: CompositeResourceDefinition
+metadata:
+  name: xfullaccess.castai.aws.platform.upbound.io
+spec:
+  group: castai.aws.platform.upbound.io
+  names:
+    kind: XFullAccess
+    plural: xfullaccess
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                parameters:
+                  type: object
+                  description: Defines the castai integration
+                  properties:
+                    providerConfigName:
+                      description: Crossplane ProviderConfig to use for provisioning this resources
+                      type: string
+                      default: default
+                    deletionPolicy:
+                      description: Delete the external resources when the Claim/XR is deleted. Defaults to Delete
+                      enum:
+                        - Delete
+                        - Orphan
+                      type: string
+                      default: Delete
+                    id:
+                      type: string
+                      description: ID of this Cluster that other objects will use to refer to it.
+                    clusterName:
+                      type: string
+                      description: "EKS ClusterName"
+                    autoscalerPolicies:
+                      type: string
+                      description: "Autoscaler Policies for this Cluster"
+                    vpc:
+                      type: string
+                      description: "VPC for this EKS Cluster"
+                    region:
+                      type: string
+                      description: "Region for this EKS Cluster"
+                    accountId:
+                      type: string
+                      description: "AWS AccountId for this EKS Cluster"
+                    subnets:
+                      type: array
+                      items:
+                        type: string
+                      description: subnets for this EKS Cluster Nodes
+                    image:
+                      type: string
+                      description: Image to be used while provisioning the Nodes to this EKS Cluster
+                    securityGroups:
+                      type: array
+                      items:
+                        type: string
+                      description: securityGroups for this EKS Cluster Nodes
+                  required:
+                    - id
+                    - accountId
+                    - clusterName
+                    - image
+                    - region
+                    - securityGroups
+                    - subnets
+                    - vpc
+              required:
+                - parameters
+            status:
+              description: status represents the observed state of cast.ai onboarding.
+              properties:
+                onboarding:
+                  description: Freeform field containing information about the onboarding configured by this Setup.
+                  type: object
+                  x-kubernetes-preserve-unknown-fields: true
+              type: object

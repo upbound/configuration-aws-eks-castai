@@ -1,0 +1,11 @@
+apiVersion: castai.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: upbound-system
+      name: castai-creds
+      key: credentials

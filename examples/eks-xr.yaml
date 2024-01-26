@@ -8,9 +8,17 @@ spec:
     region: us-west-2
     version: "1.27"
     iam:
-      # replace with your custom arn like:
+      # Important: Please specify an iamRoleArn to access the AWS EKS Cluster deployed as part of CNOE.
+      # Without specifying a valid roleArn, you will not be able to log in to the EKS cluster.
+      # If you are using AWS SSO Roles, ensure to remove 'aws-reserved/sso.amazonaws.com/' from the ARN.
+      # For example, convert this:
+      #   arn:aws:iam::123456789:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_AdministratorAccess_d703c73ed340fde7
+      # To this:
+      #   arn:aws:iam::123456789:role/AWSReservedSSO_AdministratorAccess_d703c73ed340fde7
       # roleArn: arn:aws:iam::123456789:role/AWSReservedSSO_AdministratorAccess_d703c73ed340fde7
-      roleArn: ${data.aws_eks_iam_default_admin}
+      roleArn: # set-me
+      # Please provide the instance role ARN for Cast AI here
+      autoscalerArn: # set-me
     nodes:
       count: 3
       instanceType: t3.small

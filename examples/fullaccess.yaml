@@ -1,0 +1,17 @@
+apiVersion: castai.aws.platform.upbound.io/v1alpha1
+kind: XFullAccess
+metadata:
+  name: configuration-aws-eks-castai
+spec:
+  parameters:
+    id: configuration-aws-eks-castai
+    clusterName: # set-me
+    vpc: vpc-0b0b0b0b0b0b0b0b0
+    region: us-west-2
+    accountId: "12345678910"
+    subnets:
+      - subnet-0b0b0b0b0b0b0b0b0
+      - subnet-1c1c1c1c1c1c1c1c1
+    securityGroups:
+      - sg-00000000000000000
+    image: bottlerocket-aws-k8s-1.28-x86_64*
