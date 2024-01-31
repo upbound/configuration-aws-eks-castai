@@ -36,6 +36,10 @@ spec:
                     id:
                       type: string
                       description: ID of this Cluster that other objects will use to refer to it.
+                    deleteNodesOnDisconnect:
+                      type: boolean
+                      description: "Delete Nodes on Disconnect"
+                      default: false
                     clusterName:
                       type: string
                       description: "EKS ClusterName"
@@ -73,6 +77,7 @@ spec:
                     - securityGroups
                     - subnets
                     - vpc
+                    - deleteNodesOnDisconnect
               required:
                 - parameters
             status:

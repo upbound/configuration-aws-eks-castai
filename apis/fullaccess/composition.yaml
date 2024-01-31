@@ -482,13 +482,13 @@ spec:
             base:
               apiVersion: castai.aws.platform.upbound.io/v1alpha1
               kind: XReadOnly
-              spec:
-                parameters:
-                  deleteNodesOnDisconnect: false
             patches:
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.id
                 toFieldPath: metadata.name
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.parameters.deleteNodesOnDisconnect
+                toFieldPath: spec.parameters.deleteNodesOnDisconnect
               - type: FromCompositeFieldPath
                 fromFieldPath: spec.parameters.region
                 toFieldPath: spec.parameters.region
