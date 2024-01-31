@@ -7,24 +7,12 @@ metadata:
     meta.crossplane.io/source: github.com/upbound/configuration-aws-eks-castai
     meta.crossplane.io/license: Apache-2.0
     meta.crossplane.io/description: |
-      This reference platform Configuration for CAST AI
-      CAST AI is the leading all-in-one platform for Kubernetes 
-      automation, optimization, security, and cost management.
+      This Crossplane configuration is a starting point to use CASTAI in your own internal cloud.
 
     meta.crossplane.io/readme: |
-      This reference platform Configuration for CAST AI
-      CAST AI is the leading all-in-one platform for Kubernetes 
-      automation, optimization, security, and cost management.
-      
-      The overall Composition supports the use case of onboarding to CAST AI platform.
-      This reference platform includes an ReadOnly Composition for creating Cluster in ReadOnly mode, 
-      and FullAccess to promote Cluster in FullAccess Mode.
-      This Configuration uses AWS IAM service primitives from the [Upbound Official AWS
-      Provider](https://marketplace.upbound.io/providers/upbound/provider-family-aws/) and CAST AI 
-      service promitived from the [CAST AI Provider](https://marketplace.upbound.io/providers/crossplane-contrib/crossplane-provider-castai/).
-
-      To learn more checkout the [GitHub repo](https://github.com/upbound/configuration-aws-eks-castai/) that you can copy and
-      customize to meet the exact needs of your organization!
+      This Crossplane configuration is a starting point to use CASTAI in your own internal cloud.
+      To learn more checkout the [GitHub repo](https://github.com/upbound/configuration-aws-eks-castai/)
+      that you can copy and customize to meet the exact needs of your organization!
 
 spec:
   crossplane:
