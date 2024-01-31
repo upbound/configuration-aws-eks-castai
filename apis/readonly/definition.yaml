@@ -48,6 +48,7 @@ spec:
                     deleteNodesOnDisconnect:
                       type: boolean
                       description: "Delete Nodes on Disconnect"
+                      default: false
                     assumeRoleArn:
                       type: string
                       description: "assumeRoleArn for this EKS Cluster Access for castai"
@@ -56,6 +57,7 @@ spec:
                     - accountId
                     - clusterName
                     - region
+                    - deleteNodesOnDisconnect
               required:
                 - parameters
             status:
